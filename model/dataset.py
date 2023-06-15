@@ -1,6 +1,7 @@
 import os
 import random
 from math import ceil
+from typing import Callable
 
 import torch
 import torchvision.transforms as transforms
@@ -39,10 +40,15 @@ class CustomDataset(Dataset):
         self.full_volume = None
         self.affine = None
         for c in range(self.num_cls):
-            cls_list = [[os.path.join(self.root_dir, self.classes[c], item), c] for item in read_txt(self.txt_path[c])]
+            cls_list = [
+                [os.path.join(self.root_dir, self.classes[c], item), c]
+                for item in read_txt(self.txt_path[c])
+            ]
             self.img_list += cls_list
 
-        normalize = transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
+        normalize = transforms.Normalize(
+            mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]
+        )
         train_transformer = transforms.Compose(
             [
                 transforms.Resize(256),
@@ -109,7 +115,9 @@ def read_txt(txt_path: str) -> str:
     return txt_data
 
 
-def get_random_sample_from_dataloader(dataloader: DataLoader, n: int, batch_size: int = 4) -> DataLoader:
+def get_random_sample_from_dataloader(
+    dataloader: DataLoader, n: int, batch_size: int = 4
+) -> DataLoader:
     """
     Returns a random sample of size n from the dataloader
 
@@ -123,12 +131,16 @@ def get_random_sample_from_dataloader(dataloader: DataLoader, n: int, batch_size
     indices = list(range(len(dataset)))
     random_indices = random.sample(indices, n)
     random_sampler = sampler.SubsetRandomSampler(random_indices)
-    random_dataloader = DataLoader(dataset, sampler=random_sampler, batch_size=batch_size)
+    random_dataloader = DataLoader(
+        dataset, sampler=random_sampler, batch_size=batch_size
+    )
     return random_dataloader
 
 
 # Create a load_data function that returns trainloader, testloader, and num_examples
-def load_data(batch_size: int = 4, root_dir: str = "../data/covid-ct/Images-processed/", **kwargs):
+def load_data(
+    batch_size: int = 4, root_dir: str = "data/covid-ct/Images-processed/", **kwargs
+):
     """
     Loads the data and returns trainloader, testloader, and num_examples.
 
@@ -144,8 +156,10 @@ def load_data(batch_size: int = 4, root_dir: str = "../data/covid-ct/Images-proc
     splits = ["train", "test", "val"]
 
     covid_datasets = {}
-    txt_covid_dir = kwargs.get("txt_covid_dir", "../data/covid-ct/Data-split/COVID/")
-    txt_non_covid_dir = kwargs.get("txt_non_covid_dir", "../data/covid-ct/Data-split/NonCOVID/")
+    txt_covid_dir = kwargs.get("txt_covid_dir", "data/covid-ct/Data-split/COVID/")
+    txt_non_covid_dir = kwargs.get(
+        "txt_non_covid_dir", "data/covid-ct/Data-split/NonCOVID/"
+    )
     local_train = kwargs.get("local_train", False)
 
     for split in splits:
@@ -159,8 +173,12 @@ def load_data(batch_size: int = 4, root_dir: str = "../data/covid-ct/Images-proc
 
     # Create data generators
     # Note that we are only using the test and train sets and not the validation set
-    trainloader = DataLoader(covid_datasets["train"], batch_size=batch_size, shuffle=True, num_workers=0)
-    testloader = DataLoader(covid_datasets["test"], batch_size=batch_size, shuffle=False, num_workers=0)
+    trainloader = DataLoader(
+        covid_datasets["train"], batch_size=batch_size, shuffle=True, num_workers=0
+    )
+    testloader = DataLoader(
+        covid_datasets["test"], batch_size=batch_size, shuffle=False, num_workers=0
+    )
 
     if not local_train:
         # Get a random subset of the trainloader for 3 nodes by splitting the trainloader into 3

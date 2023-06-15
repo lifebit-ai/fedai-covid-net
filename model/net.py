@@ -33,6 +33,7 @@ class Net(nn.Module):
         }
 
         n_classes = kwargs.get("n_classes", 2)
+
         self.add_module(
             "conv1",
             nn.Conv2d(
@@ -51,7 +52,6 @@ class Net(nn.Module):
 
         self.add_module("classifier", nn.Linear(512, n_classes))
         for m in self.modules():
-            print(m)
             if isinstance(m, nn.Conv2d):
                 nn.init.kaiming_normal_(m.weight, mode="fan_out", nonlinearity="relu")
             elif isinstance(m, (nn.BatchNorm2d, nn.GroupNorm)):
