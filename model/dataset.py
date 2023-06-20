@@ -214,7 +214,7 @@ def load_data(
         )
 
     num_examples = {
-        "trainset": len(covid_datasets["train"]),
+        "trainset": len(trainloader.dataset),
         "testset": len(covid_datasets["test"]),
     }
 
