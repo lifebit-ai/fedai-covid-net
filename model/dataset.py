@@ -146,6 +146,7 @@ def get_data_split(data_loader, n_splits, i):
     start_index = i * samples_per_split
     end_index = min((i + 1) * samples_per_split, total_samples)
     
+    print(f"Splitting data from {start_index} to {end_index}")
     split_indices = list(range(start_index, end_index))
     split_sampler = torch.utils.data.sampler.SubsetRandomSampler(split_indices)
     
@@ -209,7 +210,7 @@ def load_data(
     if not local_train:
         # Get a random subset of the trainloader for 3 nodes by splitting the trainloader into 3
         trainloader = get_data_split(
-            trainloader, n_splits=3, i=os.getenv("node_id", 0)
+            trainloader, n_splits=3, i=int(os.getenv("node_id", 0))
         )
 
     num_examples = {
