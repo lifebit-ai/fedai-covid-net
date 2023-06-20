@@ -137,9 +137,35 @@ def get_random_sample_from_dataloader(
     return random_dataloader
 
 
+def get_data_split(data_loader, n_splits, i):
+    """
+    Splits the data loader into n_splits and returns the i-th split
+    """
+    total_samples = len(data_loader.dataset)
+    samples_per_split = ceil(total_samples / n_splits)
+    start_index = i * samples_per_split
+    end_index = min((i + 1) * samples_per_split, total_samples)
+    
+    split_indices = list(range(start_index, end_index))
+    split_sampler = torch.utils.data.sampler.SubsetRandomSampler(split_indices)
+    
+    split_loader = DataLoader(
+        dataset=data_loader.dataset,
+        batch_size=data_loader.batch_size,
+        sampler=split_sampler,
+        num_workers=data_loader.num_workers,
+        pin_memory=data_loader.pin_memory,
+        drop_last=data_loader.drop_last
+    )
+    
+    return split_loader
+
 # Create a load_data function that returns trainloader, testloader, and num_examples
 def load_data(
-    batch_size: int = 4, root_dir: str = "data/covid-ct/Images-processed/", **kwargs
+    batch_size: int = 4,
+    root_dir: str = "data/covid-ct/Images-processed/",
+    local_train: bool = False,
+    **kwargs
 ):
     """
     Loads the data and returns trainloader, testloader, and num_examples.
@@ -182,8 +208,8 @@ def load_data(
 
     if not local_train:
         # Get a random subset of the trainloader for 3 nodes by splitting the trainloader into 3
-        trainloader = get_random_sample_from_dataloader(
-            trainloader, n=ceil(len(trainloader) / 3), batch_size=batch_size
+        trainloader = get_data_split(
+            trainloader, n_splits=3, i=os.getenv("node_id", 0)
         )
 
     num_examples = {
