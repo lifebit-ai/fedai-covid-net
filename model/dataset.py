@@ -8,6 +8,7 @@ import torchvision.transforms as transforms
 from PIL import Image
 from torch.utils.data import DataLoader, Dataset, sampler
 
+random.seed(42)
 
 class CustomDataset(Dataset):
     def __init__(self, root_dir: str, **kwargs) -> None:
@@ -80,24 +81,34 @@ class CustomDataset(Dataset):
         """
         return len(self.img_list)
 
-    def __getitem__(self, idx: int) -> dict:
+    def __getitem__(self, index):
         """
-        Returns the sample with index `idx`.
-
-        Args:
-            idx (int): Index of the sample
+        Returns the samples within the given index or range of indices.
         """
-        if torch.is_tensor(idx):
-            idx = idx.tolist()
+        if isinstance(index, int):
+            # Single index
+            return self._get_item(index)
+        elif isinstance(index, slice):
+            # Range of indices
+            start = index.start or 0
+            stop = index.stop or len(self)
+            step = index.step or 1
+            return [self._get_item(i) for i in range(start, stop, step)]
+        else:
+            raise TypeError("Invalid index type. Must be int or slice.")
 
-        img_path = self.img_list[idx][0]
-
+    def _get_item(self, index):
+        """
+        Returns the sample at the given index.
+        """
+        img_path = self.img_list[index][0]
         image = Image.open(img_path).convert("RGB")
-
         if self.transform:
             image = self.transform(image)
+        return image, torch.tensor(int(self.img_list[index][1]), dtype=torch.long)
 
-        return image, torch.tensor(int(self.img_list[idx][1]), dtype=torch.long)
+    def shuffle(self):
+        random.shuffle(self.img_list)
 
 
 def read_txt(txt_path: str) -> str:
@@ -137,34 +148,35 @@ def get_random_sample_from_dataloader(
     return random_dataloader
 
 
-def get_data_split(data_loader, n_splits, i):
+def split_dataset(dataset, n_parts, ith):
     """
-    Splits the data loader into n_splits and returns the i-th split
+    Splits the dataset into n_parts and returns the ith part.
+
+    Args:
+        n_parts (int): Number of parts to split the dataset into.
+        ith (int): Index of the part to return.
+
+    Returns:
+        CustomDataset: The ith part of the dataset.
     """
-    total_samples = len(data_loader.dataset)
-    samples_per_split = ceil(total_samples / n_splits)
-    start_index = i * samples_per_split
-    end_index = min((i + 1) * samples_per_split, total_samples)
+    assert n_parts > 0 and ith >= 0 and ith < n_parts, "Invalid split parameters."
+
+    num_samples = len(dataset)
+    samples_per_part = ceil(num_samples / n_parts)
+    start_index = ith * samples_per_part
+    end_index = min((ith + 1) * samples_per_part, num_samples)
+
+    data_split = dataset[start_index:end_index]
     
-    print(f"Splitting data from {start_index} to {end_index}")
-    split_indices = list(range(start_index, end_index))
-    split_sampler = torch.utils.data.sampler.SubsetRandomSampler(split_indices)
-    
-    split_loader = DataLoader(
-        dataset=data_loader.dataset,
-        batch_size=data_loader.batch_size,
-        sampler=split_sampler,
-        num_workers=data_loader.num_workers,
-        pin_memory=data_loader.pin_memory,
-        drop_last=data_loader.drop_last
-    )
-    
-    return split_loader
+    print(f"Returning the {ith} split from {start_index} to {end_index} of length {len(data_split)}")
+
+    return data_split
+
 
 # Create a load_data function that returns trainloader, testloader, and num_examples
 def load_data(
     batch_size: int = 4,
-    root_dir: str = "data/covid-ct/Images-processed/",
+    root_dir: str = "data/covid-ct/",
     local_train: bool = False,
     **kwargs
 ):
@@ -182,36 +194,43 @@ def load_data(
     """
     splits = ["train", "test", "val"]
 
+    images_dir = os.path.join(root_dir, "Images-processed/")
+    label_dir = os.path.join(root_dir, "Data-split/")
+    covid_label_dir = os.path.join(label_dir, "COVID/")
+    non_covid_label_dir = os.path.join(label_dir, "NonCOVID/")
+
     covid_datasets = {}
-    txt_covid_dir = kwargs.get("txt_covid_dir", "data/covid-ct/Data-split/COVID/")
-    txt_non_covid_dir = kwargs.get(
-        "txt_non_covid_dir", "data/covid-ct/Data-split/NonCOVID/"
-    )
+    txt_covid_dir = kwargs.get("txt_covid_dir", covid_label_dir)
+    txt_non_covid_dir = kwargs.get("txt_non_covid_dir", non_covid_label_dir)
     local_train = kwargs.get("local_train", False)
 
     for split in splits:
         covid_datasets[split] = CustomDataset(
             mode=split,
-            root_dir=root_dir,
+            root_dir=images_dir,
             txt_COVID=f"{txt_covid_dir}{split}CT_COVID.txt",
             txt_NonCOVID=f"{txt_non_covid_dir}{split}CT_NonCOVID.txt",
             transform=None,
         )
 
+    # Shuffle the train set
+    covid_datasets["train"].shuffle()
+
+    if not local_train:
+        # Get a random subset of the trainloader for 3 nodes by splitting the trainloader into 3
+        covid_datasets["train"] = split_dataset(
+            covid_datasets["train"], n_parts=3, ith=int(os.getenv("node_id", 0))
+        )
+
     # Create data generators
     # Note that we are only using the test and train sets and not the validation set
     trainloader = DataLoader(
-        covid_datasets["train"], batch_size=batch_size, shuffle=True, num_workers=0
+        covid_datasets["train"], batch_size=batch_size, shuffle=False, num_workers=0
     )
     testloader = DataLoader(
         covid_datasets["test"], batch_size=batch_size, shuffle=False, num_workers=0
     )
 
-    if not local_train:
-        # Get a random subset of the trainloader for 3 nodes by splitting the trainloader into 3
-        trainloader = get_data_split(
-            trainloader, n_splits=3, i=int(os.getenv("node_id", 0))
-        )
 
     num_examples = {
         "trainset": len(trainloader.dataset),
